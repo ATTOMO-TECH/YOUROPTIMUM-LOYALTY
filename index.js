@@ -6,17 +6,46 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ---------------------------------------------------------
-// 1. MOTOR GRAPHQL: Comunicación con Shopify
+// 1. MOTOR GRAPHQL: Comunicación con Shopify (Versión 2026)
 // ---------------------------------------------------------
+
+// Función interna para conseguir la llave temporal de 24h
+async function getShopifyAccessToken() {
+  const url = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/oauth/access_token`;
+
+  // Formateamos los datos tal y como pide la documentación de Shopify
+  const params = new URLSearchParams();
+  params.append("grant_type", "client_credentials");
+  params.append("client_id", process.env.SHOPIFY_CLIENT_ID);
+  params.append("client_secret", process.env.SHOPIFY_CLIENT_SECRET);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+    const data = await response.json();
+    return data.access_token; // Este es nuestro "shpat_..." fresquito
+  } catch (error) {
+    console.error("❌ Error obteniendo el Access Token:", error);
+    return null;
+  }
+}
+
+// Función principal que hace las peticiones
 async function shopifyGraphQL(query, variables = {}) {
+  // 1. Conseguimos el token de acceso válido
+  const accessToken = await getShopifyAccessToken();
+  if (!accessToken) throw new Error("No hay token de acceso");
+
   const url = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // Usaremos el Access Token que te dio la app al instalarla
-        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        "X-Shopify-Access-Token": accessToken, // Inyectamos el token temporal
       },
       body: JSON.stringify({ query, variables }),
     });

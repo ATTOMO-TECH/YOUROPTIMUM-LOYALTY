@@ -266,47 +266,30 @@ app.post(
 );
 
 // ---------------------------------------------------------
-// RUTAS TEMPORAL PARA CONSEGUIR EL ACCESS TOKEN
+// RUTA TEMPORAL PARA CREAR EL WEBHOOK OCULTO
 // ---------------------------------------------------------
-app.get("/auth", async (req, res) => {
-  const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const redirectUri = `https://${req.get("host")}/auth/callback`;
+app.get("/crear-webhook", async (req, res) => {
+  const mutation = `
+    mutation {
+      webhookSubscriptionCreate(
+        topic: SUBSCRIPTION_CONTRACTS_UPDATE,
+        webhookSubscription: {
+          callbackUrl: "https://${req.get("host")}/webhooks/sub-cancelled",
+          format: JSON
+        }
+      ) {
+        userErrors { field message }
+        webhookSubscription { id }
+      }
+    }
+  `;
 
-  const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=read_customers,write_customers,read_orders&redirect_uri=${redirectUri}`;
-  res.redirect(authUrl);
+  const result = await shopifyGraphQL(mutation);
+  res.json({
+    mensaje: "Petición de creación enviada a Shopify",
+    respuesta: result,
+  });
 });
-
-app.get("/auth/callback", async (req, res) => {
-  const { shop, code } = req.query;
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
-
-  try {
-    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-      }),
-    });
-
-    const data = await response.json();
-    console.log("🎉 TU ACCESS TOKEN ES:", data.access_token);
-
-    res.send(
-      `<h1>¡Éxito!</h1><p>Tu token es: <b>${data.access_token}</b></p><p>Cópialo, ponlo en Railway como SHOPIFY_ACCESS_TOKEN, y borra estas rutas de tu código.</p>`,
-    );
-  } catch (error) {
-    res.status(500).send("Error consiguiendo el token");
-  }
-});
-
-// ---------------------------------------------------------
-// RUTAS TEMPORAL PARA CONSEGUIR EL ACCESS TOKEN
-// ---------------------------------------------------------
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Loyalty escuchando en el puerto ${PORT}`);

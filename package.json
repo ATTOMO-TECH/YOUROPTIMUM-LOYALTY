@@ -1,16 +1,18 @@
 {
   "name": "youroptimum-loyalty",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "YourOptimum VIP Club middleware (event-based + nightly CRON reconciliation)",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "reconcile:now": "node -e \"require('./nightlyReconcile').runNightlyReconciliation().then(r => { console.log(r); process.exit(0); }).catch(e => { console.error(e); process.exit(1); })\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "node-cron": "^3.0.3"
   }
 }

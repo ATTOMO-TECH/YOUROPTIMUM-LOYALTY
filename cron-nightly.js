@@ -26,7 +26,7 @@ async function getTaggedCustomers() {
 // 2. Obtener clientes activos (han hecho pedidos en los últimos 120 días)
 async function getRecentBuyers() {
   console.log("🔍 Buscando clientes con compras en los últimos 120 días...");
-  const date120DaysAgo = new Date(Date.now() - 500 * 24 * 60 * 60 * 1000)
+  const date120DaysAgo = new Date(Date.now() - 600 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
 

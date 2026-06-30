@@ -17,7 +17,7 @@ const MAX_DAYS_BETWEEN_ORDERS = 65;
 // ============================================================================
 const MANUAL_VIP_EMAILS = {
   // Ejemplos (puedes borrarlos o sustituirlos por los tuyos):
-  "holaqisalut@gmail.com": TAG_MT,
+  "ejemplo_mensual@gmail.com": TAG_MT,
   "ejemplo_anual@gmail.com": TAG_SA,
 };
 

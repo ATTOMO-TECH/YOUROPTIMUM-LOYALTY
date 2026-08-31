@@ -1,6 +1,6 @@
 require("dotenv").config();
 const { shopifyGraphQL } = require("./shopifyAuth");
-const { reconcileCustomer, VIP_TAGS } = require("./vipClub");
+const { reconcileCustomer, MANAGED_TAGS } = require("./vipClub");
 
 // Pausa para no saturar la API de Shopify (Rate Limiting)
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -15,7 +15,8 @@ async function getTaggedCustomers() {
       }
     }
   `;
-  const searchQuery = `tag:'${VIP_TAGS[0]}' OR tag:'${VIP_TAGS[1]}'`;
+  // Incluye las etiquetas antiguas para que sus clientes migren al modelo por línea.
+  const searchQuery = MANAGED_TAGS.map((t) => `tag:'${t}'`).join(" OR ");
 
   const data = await shopifyGraphQL(query, { query: searchQuery });
   const ids = data.customers?.nodes.map((n) => n.id) || [];
@@ -106,17 +107,15 @@ async function runNightlyCron() {
         const result = await reconcileCustomer(customerGid);
         stats.evaluated++;
 
-        if (result.added) {
-          console.log(
-            `[+] ${customerGid} -> Etiqueta AÑADIDA: ${result.added}`,
-          );
+        if (result.added.length) {
+          console.log(`[+] ${customerGid} -> Añadidas: ${result.added.join(", ")}`);
           stats.added++;
-        } else if (result.removed && result.removed.length > 0) {
-          console.log(
-            `[-] ${customerGid} -> Etiquetas BORRADAS: ${result.removed.join(", ")}`,
-          );
+        }
+        if (result.removed.length) {
+          console.log(`[-] ${customerGid} -> Borradas: ${result.removed.join(", ")}`);
           stats.removed++;
-        } else {
+        }
+        if (!result.added.length && !result.removed.length) {
           stats.kept++; // Ya estaba correcto
         }
       } catch (err) {

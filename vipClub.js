@@ -1,9 +1,18 @@
 // vipClub.js actualizado con Lista Blanca de Emails
 const { shopifyGraphQL } = require("./shopifyAuth");
 
-const TAG_MT = "Club-Mensual-Trimestral";
-const TAG_SA = "Club-Semestral-Anual";
-const VIP_TAGS = [TAG_MT, TAG_SA];
+// Niveles base (tier) y líneas de producto: Woman = Optimum, Men = Optimum Men.
+// Un cliente puede tener hasta 2 etiquetas (una por línea de producto).
+const BASE_MT = "Club-Mensual-Trimestral";
+const BASE_SA = "Club-Semestral-Anual";
+const TAG_MT_WOMAN = `${BASE_MT}-Woman`;
+const TAG_SA_WOMAN = `${BASE_SA}-Woman`;
+const TAG_MT_MEN = `${BASE_MT}-Men`;
+const TAG_SA_MEN = `${BASE_SA}-Men`;
+const VIP_TAGS = [TAG_MT_WOMAN, TAG_SA_WOMAN, TAG_MT_MEN, TAG_SA_MEN];
+// Etiquetas del modelo antiguo (una sola por cliente): se retiran solas en la migración.
+const LEGACY_TAGS = [BASE_MT, BASE_SA];
+const MANAGED_TAGS = [...VIP_TAGS, ...LEGACY_TAGS];
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 const QUALIFY_DAYS = 90;
@@ -17,8 +26,9 @@ const MAX_DAYS_BETWEEN_ORDERS = 65;
 // ============================================================================
 const MANUAL_VIP_EMAILS = {
   // Ejemplos (puedes borrarlos o sustituirlos por los tuyos):
-  "ejemplo_mensual@gmail.com": TAG_MT,
-  "ejemplo_anual@gmail.com": TAG_SA,
+  // El valor puede ser una etiqueta o un array de etiquetas de VIP_TAGS:
+  "ejemplo_mensual@gmail.com": TAG_MT_WOMAN,
+  "ejemplo_anual@gmail.com": [TAG_SA_WOMAN, TAG_SA_MEN],
 };
 
 // --- Funciones Dinámicas de Tiempo y Tiers ---
@@ -45,8 +55,63 @@ function getCycleDays(planName, variantTitle) {
 
 function tierTagFromSellingPlanName(planName, variantTitle) {
   const cycle = getCycleDays(planName, variantTitle);
-  if (cycle >= 180) return TAG_SA;
-  return TAG_MT;
+  if (cycle >= 180) return BASE_SA;
+  return BASE_MT;
+}
+
+// --- Separación por línea de producto (Woman / Men) ---
+function isMenLineItem(item) {
+  return /\bmen\b/i.test(`${item?.title || ""} ${item?.variant?.title || ""}`);
+}
+
+/**
+ * Reparte los pedidos de suscripción entre las dos líneas de producto.
+ * Un pedido con artículos de ambas líneas cuenta para las dos (cada copia
+ * conserva solo los artículos de su línea, para detectar bien el ciclo).
+ */
+function splitSubOrdersByLine(orders) {
+  const woman = [];
+  const men = [];
+  for (const order of orders) {
+    const nodes = order.lineItems?.nodes || [];
+    const planNodes = nodes.filter((n) => n.sellingPlan);
+    if (planNodes.length) {
+      const menNodes = planNodes.filter(isMenLineItem);
+      const womanNodes = planNodes.filter((n) => !isMenLineItem(n));
+      if (menNodes.length) men.push({ ...order, lineItems: { nodes: menNodes } });
+      if (womanNodes.length) woman.push({ ...order, lineItems: { nodes: womanNodes } });
+    } else {
+      // Pedido detectado solo por etiquetas (sin selling plan): lo asignamos por títulos.
+      const hasMen = nodes.some(isMenLineItem);
+      const hasWoman = nodes.some((n) => !isMenLineItem(n) && /optimum/i.test(n?.title || ""));
+      if (hasMen) men.push(order);
+      if (hasWoman || !hasMen) woman.push(order);
+    }
+  }
+  return { woman, men };
+}
+
+/**
+ * Decide las etiquetas del cliente (0, 1 o 2): la lógica de rachas de siempre,
+ * aplicada por separado a cada línea de producto.
+ */
+function decideTags(
+  subOrders,
+  now = Date.now(),
+  customerGid = "Desconocido",
+  customerName = "Desconocido",
+) {
+  const { woman, men } = splitSubOrdersByLine(subOrders);
+  const tags = [];
+  if (woman.length) {
+    const base = decideTag(woman, now, customerGid, `${customerName} [Woman]`);
+    if (base) tags.push(`${base}-Woman`);
+  }
+  if (men.length) {
+    const base = decideTag(men, now, customerGid, `${customerName} [Men]`);
+    if (base) tags.push(`${base}-Men`);
+  }
+  return tags;
 }
 
 // --- Lógica de bloques de tiempo basada en pedidos ---
@@ -263,12 +328,13 @@ async function getCustomerTags(customerGid) {
   return data.customer?.tags || [];
 }
 
-async function addTag(customerGid, tag) {
+async function addTags(customerGid, tags) {
+  if (!tags.length) return;
   await shopifyGraphQL(
     `mutation($id: ID!, $tags: [String!]!) {
        tagsAdd(id: $id, tags: $tags) { userErrors { field message } }
      }`,
-    { id: customerGid, tags: [tag] },
+    { id: customerGid, tags },
   );
 }
 
@@ -287,36 +353,45 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
   const customerEmail = subOrders._customerEmail;
   const customerName = subOrders._customerName;
 
-  let desired = null;
+  let desired = [];
 
   // 1. Comprobamos la Lista Blanca primero
   if (customerEmail && MANUAL_VIP_EMAILS[customerEmail]) {
-    desired = MANUAL_VIP_EMAILS[customerEmail];
+    desired = [].concat(MANUAL_VIP_EMAILS[customerEmail]);
     console.log(
       `\n⭐ EXCEPCIÓN MANUAL (LISTA BLANCA): ${customerName} | ${customerEmail}`,
     );
-    console.log(`   ✅ Asignado directamente al nivel: ${desired}`);
+    console.log(`   ✅ Asignado directamente a: ${desired.join(", ")}`);
   } else {
-    // 2. Si no está en la lista blanca, aplicamos la matemática normal
-    desired = decideTag(subOrders, now, customerGid, customerName);
+    // 2. Si no está en la lista blanca, aplicamos la matemática por línea de producto
+    desired = decideTags(subOrders, now, customerGid, customerName);
   }
 
   const currentTags = await getCustomerTags(customerGid);
 
-  const currentVip = currentTags.filter((t) => VIP_TAGS.includes(t));
-  const toRemove = currentVip.filter((t) => t !== desired);
-  const toAdd = desired && !currentVip.includes(desired) ? desired : null;
+  // Incluimos las etiquetas del modelo antiguo para que la migración las retire sola.
+  const currentManaged = currentTags.filter((t) => MANAGED_TAGS.includes(t));
+  const toRemove = currentManaged.filter((t) => !desired.includes(t));
+  const toAdd = desired.filter((t) => !currentManaged.includes(t));
 
   if (toRemove.length) await removeTags(customerGid, toRemove);
-  if (toAdd) await addTag(customerGid, toAdd);
+  if (toAdd.length) await addTags(customerGid, toAdd);
 
   return { customerGid, desired, added: toAdd, removed: toRemove };
 }
 
 module.exports = {
-  TAG_MT,
-  TAG_SA,
+  TAG_MT: BASE_MT,
+  TAG_SA: BASE_SA,
+  TAG_MT_WOMAN,
+  TAG_SA_WOMAN,
+  TAG_MT_MEN,
+  TAG_SA_MEN,
   VIP_TAGS,
+  LEGACY_TAGS,
+  MANAGED_TAGS,
+  decideTags,
+  splitSubOrdersByLine,
   QUALIFY_DAYS,
   REENGAGE_WINDOW_DAYS,
   MAX_DAYS_BETWEEN_ORDERS,

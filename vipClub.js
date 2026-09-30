@@ -416,10 +416,15 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
     desired = [];
   }
 
-  const subifyActive = (subOrders._customerTags || [])
-    .map((t) => t.trim())
-    .includes("Has Active Subscription");
-  if (subifyActive && !isForcedOut) {
+  const custSubifyTags = (subOrders._customerTags || []).map((t) => t.trim());
+  const subifyActive = custSubifyTags.includes("Has Active Subscription");
+  // Política del cliente (oct-2026): con PAGO FALLIDO se sale del club. El keep-alive
+  // solo protege a activos SIN impago; con la etiqueta 'payment failure' de Subify
+  // vuelve a aplicar la regla de inactividad (ciclo+15 sin pedido pagado), que expulsa
+  // al moroso sin echar por error a quien ya resolvió el impago y sigue pidiendo
+  // (la etiqueta es pegajosa: no desaparece al volver a pagar).
+  const paymentFailure = custSubifyTags.includes("payment failure");
+  if (subifyActive && !paymentFailure && !isForcedOut) {
     for (const tag of currentTags.filter((t) => VIP_TAGS.includes(t))) {
       const lineSuffix = tag.endsWith("-Men") ? "-Men" : "-Woman";
       if (!desired.some((d) => d.endsWith(lineSuffix))) {

@@ -418,6 +418,13 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
     !custTagsTrim.includes("Has Paused Subscription");
   const marksToRemove = [];
   let markToAdd = null;
+  // Estando cancelado se pueden CONSERVAR etiquetas del club (hasta la baja a 15 días),
+  // pero nunca ganarlas: sin esto, tras la baja la regla de inactividad re-añadiría al
+  // cliente la noche siguiente (p. ej. anuales, cuya ventana es de 380 días).
+  if (!isWhitelisted && cancelledOnly) {
+    const currentVipNow = currentTags.map((t) => t.trim()).filter((t) => VIP_TAGS.includes(t));
+    desired = desired.filter((t) => currentVipNow.includes(t));
+  }
   const holdsClub = desired.length > 0 || currentTags.some((t) => VIP_TAGS.includes(t.trim()));
   // Válvula de seguridad: las etiquetas de Subify a veces no reflejan un contrato activo
   // (clientes multi-contrato). Un cancelado de verdad no genera pedidos nuevos: si llega

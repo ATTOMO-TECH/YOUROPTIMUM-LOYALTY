@@ -241,6 +241,7 @@ async function getSubscriptionOrdersForCustomer(customerGid) {
        customer(id: $id) {
          displayName
          email
+         tags
          orders(first: 250, reverse: true) {
            nodes {
              id
@@ -315,6 +316,7 @@ async function getSubscriptionOrdersForCustomer(customerGid) {
 
   result._customerName = customerName;
   result._customerEmail = customerEmail; // Exportamos el email para la lista blanca
+  result._customerTags = customer?.tags || []; // Etiquetas del cliente (señal de Subify)
   result._totalOrdersInShopify = rawOrders.length;
 
   return result;
@@ -368,6 +370,26 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
   }
 
   const currentTags = await getCustomerTags(customerGid);
+
+  // Política del cliente (sep-2026): el club NO se pierde por mover entregas ni por un
+  // impago en reintento. Si Subify dice que la suscripción sigue ACTIVA, conservamos las
+  // etiquetas del club que el cliente ya tiene aunque la regla de inactividad las quitara.
+  // (La señal es la etiqueta de cliente "Has Active Subscription" de Subify; los contratos
+  // no son legibles por API. La cualificación inicial de 90 días no cambia.)
+  const subifyActive = (subOrders._customerTags || [])
+    .map((t) => t.trim())
+    .includes("Has Active Subscription");
+  if (subifyActive) {
+    for (const tag of currentTags.filter((t) => VIP_TAGS.includes(t))) {
+      const lineSuffix = tag.endsWith("-Men") ? "-Men" : "-Woman";
+      if (!desired.some((d) => d.endsWith(lineSuffix))) {
+        desired.push(tag);
+        console.log(
+          `   🛡️ Mantengo ${tag}: suscripción ACTIVA en Subify (entrega movida o impago en reintento)`,
+        );
+      }
+    }
+  }
 
   // Incluimos las etiquetas del modelo antiguo para que la migración las retire sola.
   const currentManaged = currentTags.filter((t) => MANAGED_TAGS.includes(t));

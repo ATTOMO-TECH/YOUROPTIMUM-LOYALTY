@@ -87,52 +87,70 @@ function lastProduct(lineOrders) {
   const hoy = new Date();
   const fecha = hoy.toISOString().slice(0, 10);
   const fechaEs = hoy.toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" });
+  const esMiembro = (r) => r[2] !== "—" || r[4] !== "—";
+  const miembros = rows.filter(esMiembro);
+  const historicos = rows.filter((r) => !esMiembro(r));
+
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Miembros del club");
   const arial = { name: "Arial", size: 10 };
   const note = { name: "Arial", size: 9, italic: true, color: { argb: "FF666666" } };
-
-  ws.getCell("A1").value = "Optimum Club — miembros, productos y regalos";
-  ws.getCell("A1").font = { name: "Arial", size: 13, bold: true };
-  ws.getCell("A2").value = `Datos leídos en vivo de Shopify el ${fechaEs} (etiquetas y último pedido de suscripción de cada línea).`;
-  ws.getCell("A2").font = note;
-  ws.getCell("A3").value = "«Regalo Verano 2026» = ya recibió el regalo de esa línea en la campaña (8–30 sep), por la app o por la lista manual previa.";
-  ws.getCell("A3").font = note;
-
   const headers = ["Email", "Nombre", "Club línea Woman", "Producto Woman", "Club línea Men", "Producto Men", "Regalo Verano 2026 · Woman", "Regalo Verano 2026 · Men"];
   const HR = 5;
-  headers.forEach((h, idx) => {
-    const cell = ws.getRow(HR).getCell(idx + 1);
-    cell.value = h;
-    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2A44" } };
-  });
-  rows.forEach((row, r) => {
-    row.forEach((v, cIdx) => {
-      const cell = ws.getRow(HR + 1 + r).getCell(cIdx + 1);
-      cell.value = v;
-      cell.font = cIdx >= 2 && v === "—" ? { ...arial, color: { argb: "FF999999" } } : arial;
-    });
-  });
-  const last = HR + rows.length;
-  ws.autoFilter = `A${HR}:H${last}`;
-  ws.views = [{ state: "frozen", ySplit: HR }];
-  [34, 28, 19, 34, 19, 34, 23, 21].forEach((w, idx) => (ws.getColumn(idx + 1).width = w));
 
-  const nW = rows.filter((r) => r[2] !== "—").length;
-  const nM = rows.filter((r) => r[4] !== "—").length;
-  const both = rows.filter((r) => r[2] !== "—" && r[4] !== "—").length;
+  const pintaHoja = (ws, titulo, subtitulo, data) => {
+    ws.getCell("A1").value = titulo;
+    ws.getCell("A1").font = { name: "Arial", size: 13, bold: true };
+    ws.getCell("A2").value = `Datos leídos en vivo de Shopify el ${fechaEs} (etiquetas y último pedido de suscripción de cada línea).`;
+    ws.getCell("A2").font = note;
+    ws.getCell("A3").value = subtitulo;
+    ws.getCell("A3").font = note;
+    headers.forEach((h, idx) => {
+      const cell = ws.getRow(HR).getCell(idx + 1);
+      cell.value = h;
+      cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2A44" } };
+    });
+    data.forEach((row, r) => {
+      row.forEach((v, cIdx) => {
+        const cell = ws.getRow(HR + 1 + r).getCell(cIdx + 1);
+        cell.value = v;
+        cell.font = cIdx >= 2 && v === "—" ? { ...arial, color: { argb: "FF999999" } } : arial;
+      });
+    });
+    ws.autoFilter = `A${HR}:H${HR + data.length}`;
+    ws.views = [{ state: "frozen", ySplit: HR }];
+    [34, 28, 19, 34, 19, 34, 23, 21].forEach((w, idx) => (ws.getColumn(idx + 1).width = w));
+    return HR + data.length;
+  };
+
+  const ws = wb.addWorksheet("Miembros del club");
+  const last = pintaHoja(
+    ws,
+    "Optimum Club — miembros actuales",
+    "«Regalo Verano 2026» = ya recibió el regalo de esa línea en la campaña (8–30 sep), por la app o por la lista manual previa.",
+    miembros,
+  );
+  const ws2 = wb.addWorksheet("Premiados no miembros");
+  pintaHoja(
+    ws2,
+    "Premiados que ya no son miembros del club",
+    "Recibieron el regalo de la campaña Verano 2026 (app o lista manual) pero hoy no cumplen las condiciones del club. Histórico: evita duplicados si vuelven durante la campaña.",
+    historicos,
+  );
+
+  const nW = miembros.filter((r) => r[2] !== "—").length;
+  const nM = miembros.filter((r) => r[4] !== "—").length;
+  const both = miembros.filter((r) => r[2] !== "—" && r[4] !== "—").length;
   const gW = rows.filter((r) => r[6] === "Sí").length;
   const gM = rows.filter((r) => r[7] === "Sí").length;
   const resumen = [
-    ["Total clientes en la lista", rows.length],
+    ["Miembros únicos del club (esta hoja)", miembros.length],
     ["Miembros línea Woman", nW],
     ["Miembros línea Men", nM],
     ["En ambas líneas", both],
-    ["Miembros únicos del club", nW + nM - both],
-    ["Premiados que ya no son miembros", rows.length - (nW + nM - both)],
-    ["Regalos entregados Woman (app + manual)", gW],
-    ["Regalos entregados Men (app + manual)", gM],
+    ["Premiados que ya no son miembros (otra hoja)", historicos.length],
+    ["Regalos entregados Woman (app + manual, ambas hojas)", gW],
+    ["Regalos entregados Men (app + manual, ambas hojas)", gM],
   ];
   const S = last + 2;
   ws.getRow(S).getCell(1).value = "Resumen";
@@ -149,7 +167,7 @@ function lastProduct(lineOrders) {
   const out = `${__dirname}/data/club-optimum-miembros-${fecha}.xlsx`;
   await wb.xlsx.writeFile(out);
   console.log(`\n✅ ${out}`);
-  console.log(`   ${rows.length} filas | Woman ${nW} | Men ${nM} | ambas ${both} | únicos ${nW + nM - both} | regalos W ${gW} / M ${gM}`);
+  console.log(`   miembros ${miembros.length} (Woman ${nW} | Men ${nM} | ambas ${both}) | premiados no miembros ${historicos.length} | regalos W ${gW} / M ${gM}`);
 })().catch((e) => {
   console.error("Error:", e.message);
   process.exit(1);

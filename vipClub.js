@@ -40,7 +40,27 @@ const MANUAL_VIP_EMAILS = {
   "mariagilgonz@gmail.com": TAG_MT_WOMAN,
   "mabelga@yahoo.es": TAG_SA_WOMAN,
   "esthercafe3@hotmail.com": TAG_MT_WOMAN,
+
+  // ── TEMPORAL (07-oct-2026): categoría 8 del cruce del PM — activos con antigüedad
+  // a los que Subify no etiqueta, expulsados por la regla antigua. Retirar cuando
+  // Subify resincronice sus etiquetas.
+  "robertome@economistas.org": TAG_MT_MEN,
+  "manuelgonzalezdiaz@gmail.com": TAG_MT_MEN,
 };
+
+// ============================================================================
+// 🚫 BAJAS FORZADAS (EXCEPCIONES MANUALES)
+// Clientes que NO deben estar en el club aunque la matemática los quiera dentro.
+// TEMPORAL (07-oct-2026): cancelados/expirados reales (export Subify 30-09) a los que
+// Subify no etiqueta como cancelados en Shopify, por lo que la baja automática de 15
+// días no puede verlos. Retirar cada entrada cuando Subify resincronice.
+// IMPORTANTE: emails SIEMPRE en minúsculas.
+// ============================================================================
+const MANUAL_OUT_EMAILS = [
+  "ainhoa.olivan@hotmail.com",
+  "gema.pv7@gmail.com",
+  "mariacapdevilaimarques@yahoo.es",
+];
 
 // --- Funciones Dinámicas de Tiempo y Tiers ---
 function getCycleDays(planName, variantTitle) {
@@ -368,6 +388,7 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
 
   let desired = [];
   let isWhitelisted = false;
+  const isForcedOut = customerEmail && MANUAL_OUT_EMAILS.includes(customerEmail);
 
   // 1. Comprobamos la Lista Blanca primero
   if (customerEmail && MANUAL_VIP_EMAILS[customerEmail]) {
@@ -389,10 +410,16 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
   // etiquetas del club que el cliente ya tiene aunque la regla de inactividad las quitara.
   // (La señal es la etiqueta de cliente "Has Active Subscription" de Subify; los contratos
   // no son legibles por API. La cualificación inicial de 90 días no cambia.)
+  // Baja forzada: fuera del club pase lo que pase (y sin keep-alive ni marcas de baja)
+  if (isForcedOut && !isWhitelisted) {
+    if (desired.length) console.log(`   🚫 BAJA FORZADA (lista manual): ${customerName} | ${customerEmail}`);
+    desired = [];
+  }
+
   const subifyActive = (subOrders._customerTags || [])
     .map((t) => t.trim())
     .includes("Has Active Subscription");
-  if (subifyActive) {
+  if (subifyActive && !isForcedOut) {
     for (const tag of currentTags.filter((t) => VIP_TAGS.includes(t))) {
       const lineSuffix = tag.endsWith("-Men") ? "-Men" : "-Woman";
       if (!desired.some((d) => d.endsWith(lineSuffix))) {
@@ -433,7 +460,7 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
     (m, o) => Math.max(m, new Date(o.createdAt).getTime() || 0),
     0,
   );
-  if (!isWhitelisted && cancelledOnly && holdsClub) {
+  if (!isWhitelisted && !isForcedOut && cancelledOnly && holdsClub) {
     if (!cancelMark) {
       markToAdd = `${CANCEL_MARK_PREFIX}${new Date(now).toISOString().slice(0, 10)}`;
       console.log(`   ⏳ Cancelación detectada: baja del club en 15 días (${markToAdd})`);

@@ -29,6 +29,17 @@ const MANUAL_VIP_EMAILS = {
   // El valor puede ser una etiqueta o un array de etiquetas de VIP_TAGS:
   "ejemplo_mensual@gmail.com": TAG_MT_WOMAN,
   "ejemplo_anual@gmail.com": [TAG_SA_WOMAN, TAG_SA_MEN],
+
+  // ── TEMPORAL (05-oct-2026): contrato ACTIVO/PAUSADO real según el export de Subify
+  // del 30-09, pero Subify no les pone la etiqueta "Has Active/Paused Subscription" en
+  // Shopify, y la política de baja a 15 días los expulsaría por error. Retirar cada
+  // entrada cuando Subify resincronice las etiquetas de ese cliente.
+  "lydiaconcheso@gmail.com": TAG_MT_WOMAN,
+  "granlorena@hotmail.com": TAG_MT_WOMAN,
+  "daniella.modern@yahoo.co.uk": TAG_MT_MEN,
+  "mariagilgonz@gmail.com": TAG_MT_WOMAN,
+  "mabelga@yahoo.es": TAG_SA_WOMAN,
+  "esthercafe3@hotmail.com": TAG_MT_WOMAN,
 };
 
 // --- Funciones Dinámicas de Tiempo y Tiers ---

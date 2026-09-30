@@ -408,6 +408,13 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
   const marksToRemove = [];
   let markToAdd = null;
   const holdsClub = desired.length > 0 || currentTags.some((t) => VIP_TAGS.includes(t.trim()));
+  // Válvula de seguridad: las etiquetas de Subify a veces no reflejan un contrato activo
+  // (clientes multi-contrato). Un cancelado de verdad no genera pedidos nuevos: si llega
+  // un pedido de suscripción posterior a la marca, la marca se anula.
+  const lastSubOrderMs = subOrders.reduce(
+    (m, o) => Math.max(m, new Date(o.createdAt).getTime() || 0),
+    0,
+  );
   if (!isWhitelisted && cancelledOnly && holdsClub) {
     if (!cancelMark) {
       markToAdd = `${CANCEL_MARK_PREFIX}${new Date(now).toISOString().slice(0, 10)}`;
@@ -415,7 +422,12 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
     } else {
       const detected = new Date(cancelMark.slice(CANCEL_MARK_PREFIX.length));
       const daysSince = (now - detected.getTime()) / DAY_MS;
-      if (!Number.isNaN(detected.getTime()) && daysSince >= 15) {
+      if (!Number.isNaN(detected.getTime()) && lastSubOrderMs > detected.getTime()) {
+        console.log(
+          `   🛡️ Marca de baja anulada: pedido de suscripción posterior a la marca (contrato activo real)`,
+        );
+        marksToRemove.push(cancelMark);
+      } else if (!Number.isNaN(detected.getTime()) && daysSince >= 15) {
         console.log(
           `   🚪 Baja del club: cancelación detectada hace ${daysSince.toFixed(0)} días (política de 15 días)`,
         );

@@ -356,9 +356,11 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
   const customerName = subOrders._customerName;
 
   let desired = [];
+  let isWhitelisted = false;
 
   // 1. Comprobamos la Lista Blanca primero
   if (customerEmail && MANUAL_VIP_EMAILS[customerEmail]) {
+    isWhitelisted = true;
     desired = [].concat(MANUAL_VIP_EMAILS[customerEmail]);
     console.log(
       `\n⭐ EXCEPCIÓN MANUAL (LISTA BLANCA): ${customerName} | ${customerEmail}`,
@@ -391,13 +393,48 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
     }
   }
 
+  // Política del cliente (oct-2026): al CANCELAR la suscripción, la pertenencia al club
+  // termina como mucho 15 días después, sea cual sea el plan (mensual, trimestral o anual).
+  // Subify no expone la fecha de cancelación por API, así que el cron marca la primera
+  // noche en que ve al cliente cancelado (etiqueta club-baja-AAAA-MM-DD) y ejecuta la baja
+  // cuando la marca cumple 15 días. Si reactiva o pausa, la marca se retira sin efecto.
+  const CANCEL_MARK_PREFIX = "club-baja-";
+  const cancelMark = currentTags.map((t) => t.trim()).find((t) => t.startsWith(CANCEL_MARK_PREFIX));
+  const custTagsTrim = (subOrders._customerTags || []).map((t) => t.trim());
+  const cancelledOnly =
+    custTagsTrim.includes("Has Cancelled Subscription") &&
+    !custTagsTrim.includes("Has Active Subscription") &&
+    !custTagsTrim.includes("Has Paused Subscription");
+  const marksToRemove = [];
+  let markToAdd = null;
+  const holdsClub = desired.length > 0 || currentTags.some((t) => VIP_TAGS.includes(t.trim()));
+  if (!isWhitelisted && cancelledOnly && holdsClub) {
+    if (!cancelMark) {
+      markToAdd = `${CANCEL_MARK_PREFIX}${new Date(now).toISOString().slice(0, 10)}`;
+      console.log(`   ⏳ Cancelación detectada: baja del club en 15 días (${markToAdd})`);
+    } else {
+      const detected = new Date(cancelMark.slice(CANCEL_MARK_PREFIX.length));
+      const daysSince = (now - detected.getTime()) / DAY_MS;
+      if (!Number.isNaN(detected.getTime()) && daysSince >= 15) {
+        console.log(
+          `   🚪 Baja del club: cancelación detectada hace ${daysSince.toFixed(0)} días (política de 15 días)`,
+        );
+        desired = [];
+        marksToRemove.push(cancelMark);
+      }
+    }
+  } else if (cancelMark) {
+    marksToRemove.push(cancelMark); // reactivó, pausó o ya no tiene etiquetas del club
+  }
+
   // Incluimos las etiquetas del modelo antiguo para que la migración las retire sola.
   const currentManaged = currentTags.filter((t) => MANAGED_TAGS.includes(t));
   const toRemove = currentManaged.filter((t) => !desired.includes(t));
   const toAdd = desired.filter((t) => !currentManaged.includes(t));
 
-  if (toRemove.length) await removeTags(customerGid, toRemove);
-  if (toAdd.length) await addTags(customerGid, toAdd);
+  if (toRemove.length || marksToRemove.length)
+    await removeTags(customerGid, [...toRemove, ...marksToRemove]);
+  if (toAdd.length || markToAdd) await addTags(customerGid, [...toAdd, ...(markToAdd ? [markToAdd] : [])]);
 
   return { customerGid, desired, added: toAdd, removed: toRemove };
 }

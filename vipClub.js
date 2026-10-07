@@ -388,10 +388,35 @@ async function reconcileCustomer(customerGid, now = Date.now()) {
 
   let desired = [];
   let isWhitelisted = false;
-  const isForcedOut = customerEmail && MANUAL_OUT_EMAILS.includes(customerEmail);
 
-  // 1. Comprobamos la Lista Blanca primero
-  if (customerEmail && MANUAL_VIP_EMAILS[customerEmail]) {
+  // Excepciones gestionadas desde la app "Optimum Club" mediante ETIQUETAS del cliente
+  // (la app las pone/quita con write_customers; el cron solo las lee):
+  //   club-manual-alta-{mt|sa}-{woman|men} → fuerza esa etiqueta del club
+  //   club-manual-baja                     → fuerza la salida del club
+  // Tienen prioridad sobre las listas de este archivo; un alta manual gana a la baja.
+  const MANUAL_TAG_ALTAS = {
+    "club-manual-alta-mt-woman": TAG_MT_WOMAN,
+    "club-manual-alta-sa-woman": TAG_SA_WOMAN,
+    "club-manual-alta-mt-men": TAG_MT_MEN,
+    "club-manual-alta-sa-men": TAG_SA_MEN,
+  };
+  const custTagsLower = (subOrders._customerTags || []).map((t) => t.trim().toLowerCase());
+  const tagAltas = Object.entries(MANUAL_TAG_ALTAS)
+    .filter(([tag]) => custTagsLower.includes(tag))
+    .map(([, club]) => club);
+  const manualBajaTag = custTagsLower.includes("club-manual-baja");
+  const isForcedOut =
+    !tagAltas.length &&
+    (manualBajaTag || (customerEmail && MANUAL_OUT_EMAILS.includes(customerEmail)));
+
+  // 1. Excepciones manuales primero: etiquetas de la app y, como respaldo, las listas del código
+  if (tagAltas.length) {
+    isWhitelisted = true;
+    desired = [...new Set(tagAltas)];
+    console.log(
+      `\n⭐ ALTA MANUAL (etiqueta desde la app): ${customerName} | ${customerEmail} → ${desired.join(", ")}`,
+    );
+  } else if (customerEmail && MANUAL_VIP_EMAILS[customerEmail]) {
     isWhitelisted = true;
     desired = [].concat(MANUAL_VIP_EMAILS[customerEmail]);
     console.log(

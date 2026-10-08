@@ -25,27 +25,10 @@ const MAX_DAYS_BETWEEN_ORDERS = 65;
 // IMPORTANTE: Escribe los emails SIEMPRE en minúsculas.
 // ============================================================================
 const MANUAL_VIP_EMAILS = {
-  // Ejemplos (puedes borrarlos o sustituirlos por los tuyos):
-  // El valor puede ser una etiqueta o un array de etiquetas de VIP_TAGS:
-  "ejemplo_mensual@gmail.com": TAG_MT_WOMAN,
-  "ejemplo_anual@gmail.com": [TAG_SA_WOMAN, TAG_SA_MEN],
-
-  // ── TEMPORAL (05-oct-2026): contrato ACTIVO/PAUSADO real según el export de Subify
-  // del 30-09, pero Subify no les pone la etiqueta "Has Active/Paused Subscription" en
-  // Shopify, y la política de baja a 15 días los expulsaría por error. Retirar cada
-  // entrada cuando Subify resincronice las etiquetas de ese cliente.
-  "lydiaconcheso@gmail.com": TAG_MT_WOMAN,
-  "granlorena@hotmail.com": TAG_MT_WOMAN,
-  "daniella.modern@yahoo.co.uk": TAG_MT_MEN,
-  "mariagilgonz@gmail.com": TAG_MT_WOMAN,
-  "mabelga@yahoo.es": TAG_SA_WOMAN,
-  "esthercafe3@hotmail.com": TAG_MT_WOMAN,
-
-  // ── TEMPORAL (07-oct-2026): categoría 8 del cruce del PM — activos con antigüedad
-  // a los que Subify no etiqueta, expulsados por la regla antigua. Retirar cuando
-  // Subify resincronice sus etiquetas.
-  "robertome@economistas.org": TAG_MT_MEN,
-  "manuelgonzalezdiaz@gmail.com": TAG_MT_MEN,
+  // VACÍA desde el 08-oct-2026: las excepciones se gestionan ahora con etiquetas del
+  // cliente (club-manual-alta-* / club-manual-baja) desde la pantalla "Excepciones"
+  // de la app Optimum Club. Esta lista queda solo como mecanismo de emergencia.
+  // Formato: "email@en.minusculas": TAG_MT_WOMAN  (o un array de etiquetas)
 };
 
 // ============================================================================
@@ -57,9 +40,8 @@ const MANUAL_VIP_EMAILS = {
 // IMPORTANTE: emails SIEMPRE en minúsculas.
 // ============================================================================
 const MANUAL_OUT_EMAILS = [
-  "ainhoa.olivan@hotmail.com",
-  "gema.pv7@gmail.com",
-  "mariacapdevilaimarques@yahoo.es",
+  // VACÍA desde el 08-oct-2026: usar la etiqueta club-manual-baja desde la pantalla
+  // "Excepciones" de la app. Esta lista queda solo como mecanismo de emergencia.
 ];
 
 // --- Funciones Dinámicas de Tiempo y Tiers ---
